@@ -24,3 +24,4 @@ class Molecule:
         # Progress
         self.scf_computed = False
         self.E_SCF = False
+        self.eps = False # Orbital energies from SCF

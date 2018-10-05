@@ -68,6 +68,7 @@ def do_scf(mol,
             print("SCF converged in {} steps!\nSCF Energy = {}".format(scf_iter,E_SCF + E_nuc))
             mol.scf_computed = True
             mol.E_SCF = E_SCF
+            mol.eps = eps
             break
 
         E_old = E_SCF
