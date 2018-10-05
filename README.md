@@ -4,3 +4,7 @@ To install, please run:
 ```python
 pip install -e .
 ```
+
+Current methods:
+
+* SCF
