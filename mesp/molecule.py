@@ -23,4 +23,4 @@ class Molecule:
 
         # Progress
         self.scf_computed = False
-        
+        self.E_SCF = False
