@@ -58,14 +58,14 @@ def do_scf(mol,
 
         F = mol.Hc + 2*mol.J - mol.K # Compute Fock matrix
 
-        E_SCF = np.einsum('ij,ij->',mol.D,mol.Hc+F) # Compute SCF energy
+        E_SCF = np.einsum('ij,ij->',mol.D,mol.Hc+F) + E_nuc# Compute SCF energy
 
         grad = np.einsum('ij,jk,kl->il',F,mol.D,S) - np.einsum('ij,jk,kl->il',S,mol.D,F)
         grad = A.T @ grad @ A
         rms = np.mean(grad**2)**0.5
 
         if ((abs(E_SCF - E_old) < e_conv) and (rms < d_conv)):
-            print("SCF converged in {} steps!\nSCF Energy = {}".format(scf_iter,E_SCF + E_nuc))
+            print("SCF converged in {} steps!\nSCF Energy = {}".format(scf_iter,E_SCF))
             mol.scf_computed = True
             mol.E_SCF = E_SCF
             mol.eps = eps

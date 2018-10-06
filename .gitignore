@@ -2,3 +2,4 @@ timer.dat
 *.pyc
 *.egg*
 __pycache__
+.pytest*

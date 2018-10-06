@@ -1,8 +1,13 @@
 MESP: My Electronic Structure Package
 
-To install, please run:
+To install, run:
 ```python
 pip install -e .
+```
+
+To test, run:
+```python
+py.test
 ```
 
 Current methods:
