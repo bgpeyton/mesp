@@ -14,3 +14,5 @@ bas = "sto-3g"
 mol = mesp.Molecule('H2O',geom,bas)
 
 mesp.scf.do_scf(mol)
+
+mesp.ccsd.do_ccsd(mol)
