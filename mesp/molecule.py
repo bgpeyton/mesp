@@ -15,13 +15,15 @@ class Molecule:
         # Leave some space to store other things
         self.C  = None  # MO coefficient matrix
         self.D  = None  # Density
-        self.g  = None  # bleh
+        self.g  = None  # Might not need to save this
         self.Hc = None  # Core Hamiltonian
         self.H  = None  # Hamiltonian
         self.J  = None  # Coulomb
         self.K  = None  # Exchange
+        self.eps = False # SCF orbital energies
 
         # Progress
         self.scf_computed = False
+        self.mp2_computed = False
         self.E_SCF = False
-        self.eps = False # Orbital energies from SCF
+        self.E_MP2 = False
