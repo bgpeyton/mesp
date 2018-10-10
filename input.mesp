@@ -23,4 +23,4 @@ mol = mesp.Molecule('H2O',geom,bas)
 
 mesp.do_scf(mol)
 
-mesp.mp2.do_mp2(mol)
+mesp.do_mp2(mol)
