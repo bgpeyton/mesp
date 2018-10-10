@@ -7,12 +7,20 @@ geom = """
     O
     H 1 1
     H 1 1 2 104.5
+    symmetry c1
 """
 
 bas = "sto-3g"
 
+psi4.set_options({
+    'basis':bas,
+    'mp2_type':'conv',
+    'freeze_core':'false',
+    'e_convergence':1e-12,
+    'd_convergence':1e-12})
+
 mol = mesp.Molecule('H2O',geom,bas)
 
-mesp.scf.do_scf(mol)
+mesp.do_scf(mol)
 
-mesp.ccsd.do_ccsd(mol)
+mesp.mp2.do_mp2(mol)
