@@ -13,3 +13,4 @@ py.test
 Current methods:
 
 * SCF
+* MP2
