@@ -23,7 +23,7 @@ def do_scf(mol,
     mol: MESP Molecule class
     e_conv: float
     d_conv: float
-    max_iter: int
+    max_iter: int, maximum iterations for SCF
     '''
     
     ### SETUP ###
