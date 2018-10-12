@@ -12,9 +12,9 @@ geom = """
 bas = "sto-3g"
 mol = mesp.Molecule('H2O',geom,bas)
 
-def test_mp2():
-    mesp.mp2.do_mp2(mol)
-    E_mesp = mol.E_MP2    
+def test_ccsd():
+    mesp.ccsd.do_ccsd(mol)
+    E_mesp = mol.E_CCSD    
 
     psi4.set_options({
         'basis':bas,
@@ -23,10 +23,10 @@ def test_mp2():
         'freeze_core':'false',
         'e_convergence':1e-12,
         'd_convergence':1e-12})
-    E_psi4 = psi4.energy('MP2')
+    E_psi4 = psi4.energy('CCSD')
     
     print("Psi4 energy: {}\nmesp energy: {}".format(E_psi4,E_mesp))
     assert np.allclose(E_psi4,E_mesp)
 
 if __name__=="__main__":
-    test_mp2()
+    test_ccsd()
