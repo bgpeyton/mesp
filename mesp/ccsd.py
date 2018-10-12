@@ -4,7 +4,7 @@ import mesp
 
 def do_ccsd(mol,
             e_conv = 1e-12,
-            max_iter = 2):
+            max_iter = 50):
     '''
     CCSD function
     
@@ -64,8 +64,6 @@ def do_ccsd(mol,
     # Start CCSD iterations
     E_old = 0.0
     for ccsd_iter in range(1,max_iter):
-        print("Iteration {} . . .".format(ccsd_iter))
-
         # Build 2- and 4-index intermediates
         Fae = build_Fae(F,MO,ov,t1,t2)
         Fmi = build_Fmi(F,MO,ov,t1,t2)
@@ -89,27 +87,28 @@ def do_ccsd(mol,
         tmp = Fae - tmp
         T2 += np.einsum('ijae,be->ijab',t2,tmp)
         T2 -= np.einsum('ijbe,ae->ijab',t2,tmp) # Questionable- rebuild tmp with P(ab)?
+
         tmp = 0.5 * np.einsum('je,me->mj',t1,Fme)
         tmp = Fmi + tmp
         T2 -= np.einsum('imab,mj->ijab',t2,tmp)
         T2 += np.einsum('jmab,mi->ijab',t2,tmp) # Also questionable
+
         tau = build_tau(t1,t2)
         T2 += 0.5 * np.einsum('mnab,mnij->ijab',tau,Wmnij)
         T2 += 0.5 * np.einsum('ijef,abef->ijab',tau,Wabef)
-        tmp1 = np.einsum('ie,ma,mbej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-        tmp2 = np.einsum('imae,mbej->ijab',t2,Wmbej)
-        T2 += tmp1 - tmp2
-        tmp1 = np.einsum('ie,mb,maej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-        tmp2 = np.einsum('imbe,maej->ijab',t2,Wmbej)
-        T2 -= tmp1 - tmp2
-        tmp1 = np.einsum('je,ma,mbei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-        tmp2 = np.einsum('jmae,mbei->ijab',t2,Wmbej)
-        T2 -= tmp1 - tmp2
-        tmp1 = np.einsum('je,mb,maei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-        tmp2 = np.einsum('jmbe,maei->ijab',t2,Wmbej)
-        T2 += tmp1 - tmp2
+
+        T2 -= np.einsum('ie,ma,mbej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
+        T2 += np.einsum('imae,mbej->ijab',t2,Wmbej)
+        T2 += np.einsum('ie,mb,maej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
+        T2 -= np.einsum('imbe,maej->ijab',t2,Wmbej)
+        T2 += np.einsum('je,ma,mbei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
+        T2 -= np.einsum('jmae,mbei->ijab',t2,Wmbej)
+        T2 -= np.einsum('je,mb,maei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
+        T2 += np.einsum('jmbe,maei->ijab',t2,Wmbej)
+
         T2 += np.einsum('ie,abej->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
         T2 -= np.einsum('je,abei->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
+
         T2 -= np.einsum('ma,mbij->ijab',t1,MO[ov[0],ov[1],ov[0],ov[0]])
         T2 += np.einsum('mb,maij->ijab',t1,MO[ov[0],ov[1],ov[0],ov[0]])
 
@@ -121,15 +120,21 @@ def do_ccsd(mol,
         E_CCSD_CORR = np.einsum('ia,ia->',F[ov[0],ov[1]],t1)
         E_CCSD_CORR += 0.25 * np.einsum('ijab,ijab->',MO_ijab,t2)
         E_CCSD_CORR += 0.5 * np.einsum('ijab,ia,jb->',MO_ijab,t1,t1)
-        print("CCSD Correlation Energy = {}".format(E_CCSD_CORR))
+#        print("Iteration {} . . .".format(ccsd_iter))
+#        print("CCSD Correlation Energy = {}".format(E_CCSD_CORR))
 
         # Check convergence
         if (abs(E_CCSD_CORR - E_old) < e_conv):
             E_CCSD = E_CCSD_CORR + mol.E_SCF
             mol.E_CCSD = E_CCSD
-            print("CCSD converged in {} steps!\nCCSD Energy = {}".format(E_CCSD))
+            mol.ccsd_computed = True
+            print("CCSD converged in {} steps!\nCCSD Energy = {}".format(ccsd_iter,E_CCSD))
             break
-
+        else:
+            E_old = E_CCSD_CORR
+    if mol.ccsd_computed == False:
+        print("CCSD did not converge after {} steps.".format(max_iter))
+        print("Current CCSD Correlation Energy = {}".format(E_CCSD_CORR))
 
 # TAU BUILD FNS
 def build_tau(t1,t2):

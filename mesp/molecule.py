@@ -25,5 +25,7 @@ class Molecule:
         # Progress
         self.scf_computed = False
         self.mp2_computed = False
+        self.ccsd_computed = False
         self.E_SCF = False
         self.E_MP2 = False
+        self.E_CCSD = False
