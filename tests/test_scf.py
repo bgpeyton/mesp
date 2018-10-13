@@ -7,6 +7,7 @@ geom = """
     O
     H 1 1
     H 1 1 2 104.5
+    symmetry c1
 """
 bas = "sto-3g"
 mol = mesp.Molecule('H2O',geom,bas)
@@ -15,7 +16,12 @@ def test_scf():
     mesp.scf.do_scf(mol)
     E_mesp = mol.E_SCF    
 
-    psi4.set_options({"basis":bas})
+    psi4.set_options({
+        'basis':bas,
+        'scf_type':'pk',
+        'freeze_core':'false',
+        'e_convergence':1e-12,
+        'd_convergence':1e-12})
     psi4.set_module_options('SCF', {'e_convergence': 1e-12, 'd_convergence': 1e-12,
         'DIIS': False,'scf_type':'pk'})
     E_psi4 = psi4.energy('SCF')
