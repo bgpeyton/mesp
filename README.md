@@ -14,3 +14,4 @@ Current methods:
 
 * SCF
 * MP2
+* CCSD
