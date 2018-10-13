@@ -62,7 +62,7 @@ def do_scf(mol,
     ### START SCF ###
     E_old = 0
     D_old = np.zeros_like(mol.D)
-    for scf_iter in range(1,max_iter):
+    for scf_iter in range(1,max_iter+1):
         mol.J = np.einsum('rs,pqrs->pq',mol.D,ERI) # Compute Coulomb term
         mol.K = np.einsum('rs,prqs->pq',mol.D,ERI) # Compute Exhange term
 
@@ -79,6 +79,9 @@ def do_scf(mol,
         if len(F_list) > diis_max:
             del F_list[0]
             del r_list[0]
+
+        if debug:
+            print("Iter {}: E = {}, rms = {}".format(scf_iter,E_SCF,rms))
 
         if ((abs(E_SCF - E_old) < e_conv) and (rms < d_conv)):
             print("SCF converged in {} steps!\nSCF Energy = {}".format(scf_iter,E_SCF))
