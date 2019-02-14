@@ -12,11 +12,8 @@ geom = """
 bas = "sto-3g"
 mol = mesp.Molecule('H2O',geom,bas)
 
-def test_ccsd():
-    mesp.scf.do_scf(mol,
-                    e_conv = 1e-12,
-                    max_iter = 100) # make sure SCF converges
-    mesp.ccsd.do_ccsd(mol)
+def test_so_ccsd():
+    mesp.so_ccsd.do_so_ccsd(mol)
     E_mesp = mol.E_CCSD    
 
     psi4.set_options({
@@ -32,4 +29,4 @@ def test_ccsd():
     assert np.allclose(E_psi4,E_mesp)
 
 if __name__=="__main__":
-    test_ccsd()
+    test_so_ccsd()
