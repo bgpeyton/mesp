@@ -15,5 +15,5 @@ py.test
 ### Implemented methods:
 * SCF
 * MP2
-* CCSD (spin orbital)
-* CC2  (cut-down SO CCSD)
+* CCSD (spin-adapted and spin-orbital)
+* CC2  (spin-adapted and spin-orbital)
