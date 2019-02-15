@@ -79,16 +79,13 @@ def do_cc2(mol,
 #        print("Iteration {} . . .".format(cc2_iter))
 
         # Build tau intermediates
-        tau = build_tau(t1,t2)
-        aprx_tau = build_tau(t1,t2,aprx=True)
-        tildetau = build_tildetau(t1,t2)
+        tau = build_tau(t1,t2,aprx=True) # aprx tau, don't need full
+        tildetau = build_tildetau(t1,t2) # full ttau, don't need aprx
 
         # Build 2- and 4-index intermediates
         Fvv, Foo, Fov = build_F(F,L,ov,t1,t2,tildetau)
-        aprx_Fvv, aprx_Foo = build_F(F,L,ov,t1,t2,tildetau,aprx=True)
-#        Woooo, Wovov, Wovvo = build_W(MO,L,ov,t1,t2,tau)
-        Woooo, Wovov = build_W(MO,L,ov,t1,t2,aprx_tau,aprx=True)
-        Z = build_Z(MO,ov,aprx_tau) 
+        Woooo, Wovov = build_W(MO,L,ov,t1,t2,tau,aprx=True) # aprx W's (from tau)
+        Z = build_Z(MO,ov,tau) # aprx Z (from tau)
 
         # Build T1
         T1 = F[ov[0],ov[1]].copy()
@@ -113,8 +110,8 @@ def do_cc2(mol,
 #        T2 -= 0.5*np.einsum('imab,je,me->ijab',t2,t1,Fov)
 #        T2 -= 0.5*np.einsum('mjab,ie,me->ijab',t2,t1,Fov)
 
-        T2 += np.einsum('mnab,mnij->ijab',aprx_tau,Woooo) # should I wrap in the t2*MO component?
-        T2 += np.einsum('ijef,abef->ijab',aprx_tau,MO[ov[1],ov[1],ov[1],ov[1]])
+        T2 += np.einsum('mnab,mnij->ijab',tau,Woooo) 
+        T2 += np.einsum('ijef,abef->ijab',tau,MO[ov[1],ov[1],ov[1],ov[1]])
         T2 += np.einsum('ie,abej->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
         T2 += np.einsum('je,baei->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
 
@@ -220,6 +217,7 @@ def build_F(F,L,ov,t1,t2,tildetau,aprx=False):
         return fvv, foo
 
 # 4-INDEX INTERMEDIATES
+## here aprx will keep only pure MO terms
 def build_Woooo(MO,ov,t1,t2,tau):
     '''EQ 6'''
     woooo = MO[ov[0],ov[0],ov[0],ov[0]].copy()
