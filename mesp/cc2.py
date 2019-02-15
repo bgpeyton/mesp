@@ -11,7 +11,18 @@ def do_cc2(mol,
     Parameters
     ----------
     mol: MESP Molecule class
-    max_iter: int, maximum iterations for CC2
+    e_conv: optional float (default = 1e-12), convergence criteria for energy
+    max_iter: optional int (default = 50), maximum iterations for CC2
+
+    Notes
+    ----------
+    This is a spatial-orbital code, spin-adapted using the Unitary Group 
+    Generator Approach. Equations were matched with Prof. Crawford's UGACC, 
+    factorized roughly according to the Stanton1991 CCSD intermediates.
+    The T2 equations were then cut down to first order, meaning only terms
+    originating from H and T1 survive (as no [H,T2] commutators produce 
+    [F,T2] terms in the UGG formulation). 
+    https://github.com/lothian/ugacc/blob/master/ccwfn.cc
     '''
     
     ### SETUP ###
@@ -21,25 +32,24 @@ def do_cc2(mol,
     # Make a Mints helper and grab integrals from psi4
     mints = psi4.core.MintsHelper(mol.p4wfn.basisset())
     C_p4 = psi4.core.Matrix.from_array(mol.C) # need p4 Matrix
-    MO = np.asarray(mints.mo_spin_eri(C_p4,C_p4)) # antisymmetrized SO MO ERI
+    MO = np.asarray(mints.mo_eri(C_p4,C_p4,C_p4,C_p4)) # MO ERI
+    MO = MO.swapaxes(1,2) # Physicist notation
 
-    nso = MO.shape[0] # convenient number of spin orbitals
-    nocc = int(mol.nel) # number of occ orbitals
-    nvir = nso - nocc # number of vir orbitals
-    so_eps = np.repeat(mol.eps, 2) # spin-orbital sfc orbital energies
+    no = MO.shape[0] # convenient number of orbitals
+    nocc = int(mol.nel / 2) # number of doubly occ orbitals
+    nvir = no - nocc # number of vir orbitals
 
     F = mol.Hc + 2*mol.J - mol.K # AO-basis Fock
     F = np.einsum('uj,vi,uv', mol.C, mol.C, F) # MO-basis Fock
-    I = np.array([[1,0],
-                  [0,1]])
-    F = np.kron(F,I) # Expand and spin-tegrate, thanks Vibin!
 
     # use slices to cut out occ and vir blocks
     o = slice(0,nocc) 
-    v = slice(nocc,nso)
+    v = slice(nocc,no)
     ov = (o,v) # tuple for passing into functions
 
-    MO_ijab = MO[o,o,v,v] # <ij||ab>
+    MO_ijab = MO[o,o,v,v] # <ij|ab>
+    L = 2*MO - MO.swapaxes(2,3) # L_{ijab} = 2*<ij|ab> - <ij|ba>
+                                # Also called gbar in Prof. Valeev's notation
 
     # Grab orbital energies. I know I could just tile mol.eps,
     # but this is a good check if my Fock is correct
@@ -56,7 +66,9 @@ def do_cc2(mol,
     t2 = MO_ijab / D_ijab
 
     if not mol.mp2_computed:
-        E_MP2_CORR = 0.25 * np.einsum('ijab,ijab->',MO_ijab,t2)
+        tau = build_tau(t1,t2)
+        E_MP2_CORR = 2*np.einsum('ia,ia->',F[ov[0],ov[1]],t1)
+        E_MP2_CORR += np.einsum('ijab,ijab->',tau,L[ov[0],ov[0],ov[1],ov[1]])
         E_MP2 = E_MP2_CORR + mol.E_SCF
         mol.E_MP2 = E_MP2
         print('MP2 energy (from CC2) = {}'.format(E_MP2))
@@ -64,82 +76,92 @@ def do_cc2(mol,
     # Start CC2 iterations
     E_old = 0.0
     for cc2_iter in range(1,max_iter):
-        # Build 2- and 4-index intermediates
-        Fae = build_Fae(F,MO,ov,t1,t2)
-        Fmi = build_Fmi(F,MO,ov,t1,t2)
-        Fme = build_Fme(F,MO,ov,t1)
-        Wmnij = build_Wmnij(MO,ov,t1,t2)
-        Wabef = build_Wabef(MO,ov,t1,t2)
-        Wmbej = build_Wmbej(MO,ov,t1,t2)
+#        print("Iteration {} . . .".format(cc2_iter))
 
-        # Build approx 2- and 4-index intermediates
-        aprx_Fae = build_Fae(F,MO,ov,t1,t2,True)
-        aprx_Fmi = build_Fmi(F,MO,ov,t1,t2,True)
-        aprx_Fme = build_Fme(F,MO,ov,t1,True)
-        aprx_Wmnij = build_Wmnij(MO,ov,t1,t2,True)
-        aprx_Wabef = build_Wabef(MO,ov,t1,t2,True)
+        # Build tau intermediates
+        tau = build_tau(t1,t2)
+        aprx_tau = build_tau(t1,t2,aprx=True)
+        tildetau = build_tildetau(t1,t2)
+
+        # Build 2- and 4-index intermediates
+        Fvv, Foo, Fov = build_F(F,L,ov,t1,t2,tildetau)
+        aprx_Fvv, aprx_Foo = build_F(F,L,ov,t1,t2,tildetau,aprx=True)
+#        Woooo, Wovov, Wovvo = build_W(MO,L,ov,t1,t2,tau)
+        Woooo, Wovov = build_W(MO,L,ov,t1,t2,aprx_tau,aprx=True)
+        Z = build_Z(MO,ov,aprx_tau) 
 
         # Build T1
         T1 = F[ov[0],ov[1]].copy()
-        T1 += np.einsum('ie,ae->ia',t1,Fae)
-        T1 -= np.einsum('ma,mi->ia',t1,Fmi)
-        T1 += np.einsum('imae,me->ia',t2,Fme)
-        T1 -= np.einsum('nf,naif->ia',t1,MO[ov[0],ov[1],ov[0],ov[1]])
-        T1 -= 0.5 * np.einsum('imef,maef->ia',t2,MO[ov[0],ov[1],ov[1],ov[1]])
-        T1 -= 0.5 * np.einsum('mnae,nmei->ia',t2,MO[ov[0],ov[0],ov[1],ov[0]])
+        T1 += np.einsum('ie,ae->ia',t1,Fvv)
+        T1 -= np.einsum('ma,mi->ia',t1,Foo)
+        T1 += 2*np.einsum('miea,me->ia',t2,Fov)
+        T1 -= np.einsum('miae,me->ia',t2,Fov)
+        T1 += np.einsum('nf,nafi->ia',t1,L[ov[0],ov[1],ov[1],ov[0]])
+        T1 += 2*np.einsum('inef,anef->ia',t2,MO[ov[1],ov[0],ov[1],ov[1]])
+        T1 -= np.einsum('infe,anef->ia',t2,MO[ov[1],ov[0],ov[1],ov[1]])
+        T1 -= np.einsum('mnea,mnei->ia',t2,L[ov[0],ov[0],ov[1],ov[0]])
 
         # Build T2
         T2 = MO[ov[0],ov[0],ov[1],ov[1]].copy()
-#        tmp = 0.5 * np.einsum('mb,me->be',t1,aprx_Fme)
-#        tmp = aprx_Fae - tmp
-#        T2 += np.einsum('ijae,be->ijab',t2,tmp)
-#        T2 -= np.einsum('ijbe,ae->ijab',t2,tmp) 
-        T2 += np.einsum('ijae,be->ijab',t2,aprx_Fae) # CC2 only needs pure-Fock Fae
-        T2 -= np.einsum('ijbe,ae->ijab',t2,aprx_Fae) # ''
+#        T2 += np.einsum('ijae,be->ijab',t2,aprx_Fvv)
+#        T2 += np.einsum('jibe,ae->ijab',t2,aprx_Fvv)
+#        T2 -= 0.5*np.einsum('ijae,mb,me->ijab',t2,t1,Fov)
+#        T2 -= 0.5*np.einsum('ijeb,ma,me->ijab',t2,t1,Fov)
 
-#        tmp = 0.5 * np.einsum('je,me->mj',t1,aprx_Fme)
-#        tmp = aprx_Fmi + tmp
-#        T2 -= np.einsum('imab,mj->ijab',t2,tmp)
-#        T2 += np.einsum('jmab,mi->ijab',t2,tmp) 
-        T2 -= np.einsum('imab,mj->ijab',t2,aprx_Fmi) # CC2 only needs pure-Fock Fmi
-        T2 += np.einsum('jmab,mi->ijab',t2,aprx_Fmi) # ''
+#        T2 -= np.einsum('imab,mj->ijab',t2,aprx_Foo)
+#        T2 -= np.einsum('mjab,mi->ijab',t2,aprx_Foo)
+#        T2 -= 0.5*np.einsum('imab,je,me->ijab',t2,t1,Fov)
+#        T2 -= 0.5*np.einsum('mjab,ie,me->ijab',t2,t1,Fov)
 
-        tau = build_tau(t1,t2,True)
-        T2 += 0.5 * np.einsum('mnab,mnij->ijab',tau,aprx_Wmnij) # need aprx Tau and W
-        T2 += 0.5 * np.einsum('ijef,abef->ijab',tau,aprx_Wabef) # ''
-
-        T2 -= np.einsum('ie,ma,mbej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-#        T2 += np.einsum('imae,mbej->ijab',t2,Wmbej) # no t2*Fock pieces in t2*Wmbej
-        T2 += np.einsum('ie,mb,maej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-#        T2 -= np.einsum('imbe,maej->ijab',t2,Wmbej)
-        T2 += np.einsum('je,ma,mbei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-#        T2 -= np.einsum('jmae,mbei->ijab',t2,Wmbej)
-        T2 -= np.einsum('je,mb,maei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
-#        T2 += np.einsum('jmbe,maei->ijab',t2,Wmbej)
-
+        T2 += np.einsum('mnab,mnij->ijab',aprx_tau,Woooo) # should I wrap in the t2*MO component?
+        T2 += np.einsum('ijef,abef->ijab',aprx_tau,MO[ov[1],ov[1],ov[1],ov[1]])
         T2 += np.einsum('ie,abej->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
-        T2 -= np.einsum('je,abei->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
+        T2 += np.einsum('je,baei->ijab',t1,MO[ov[1],ov[1],ov[1],ov[0]])
 
         T2 -= np.einsum('ma,mbij->ijab',t1,MO[ov[0],ov[1],ov[0],ov[0]])
-        T2 += np.einsum('mb,maij->ijab',t1,MO[ov[0],ov[1],ov[0],ov[0]])
+        T2 -= np.einsum('mb,maji->ijab',t1,MO[ov[0],ov[1],ov[0],ov[0]])
+#        T2 += np.einsum('imae,mbej->ijab',t2,Wovvo) no t2*Fock pieces in t2*Wmbej
+#        T2 -= np.einsum('imea,mbej->ijab',t2,Wovvo)
+
+#        T2 += np.einsum('imae,mbej->ijab',t2,Wovvo)
+#        T2 += np.einsum('imae,mbje->ijab',t2,Wovov)
+#        T2 += np.einsum('mjae,mbie->ijab',t2,Wovov)
+#        T2 += np.einsum('imeb,maje->ijab',t2,Wovov)
+
+#        T2 += np.einsum('jmbe,maei->ijab',t2,Wovvo)
+#        T2 += np.einsum('jmbe,maie->ijab',t2,Wovov)
+#        T2 += np.einsum('jmbe,maei->ijab',t2,Wovvo)
+#        T2 -= np.einsum('jmeb,maei->ijab',t2,Wovvo)
+
+        T2 -= np.einsum('ie,ma,mbej->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
+        T2 -= np.einsum('ie,mb,maje->ijab',t1,t1,MO[ov[0],ov[1],ov[0],ov[1]])
+        T2 -= np.einsum('je,ma,mbie->ijab',t1,t1,MO[ov[0],ov[1],ov[0],ov[1]])
+        T2 -= np.einsum('je,mb,maei->ijab',t1,t1,MO[ov[0],ov[1],ov[1],ov[0]])
+
+        tmp = np.einsum('ma,mbij->ijab',t1,Z)
+        T2 -= tmp
+        T2 -= tmp.swapaxes(0,1).swapaxes(2,3)
 
         # Update t1 and t2 amplitudes
+#        t1 += (T1 / D_ia)
+#        t2 += (T2 / D_ijab)
         t1 = T1 / D_ia
         t2 = T2 / D_ijab
 
         # Calculate the current CC2 correlation energy
-        E_CC2_CORR = np.einsum('ia,ia->',F[ov[0],ov[1]],t1)
-        E_CC2_CORR += 0.25 * np.einsum('ijab,ijab->',MO_ijab,t2)
-        E_CC2_CORR += 0.5 * np.einsum('ijab,ia,jb->',MO_ijab,t1,t1)
-#        print("Iteration {} . . .".format(cc2_iter))
-#        print("CC2 Correlation Energy = {}".format(E_CC2_CORR))
+        tau = build_tau(t1,t2)
+        one_E = 2*np.einsum('ia,ia->',F[ov[0],ov[1]],t1)
+        two_E = np.einsum('ijab,ijab->',tau,L[ov[0],ov[0],ov[1],ov[1]])
+        E_CC2_CORR = one_E + two_E
+#        print("one_E = {}\ntwo_E = {}".format(one_E,two_E))
+#        print("CC2 Correlation Energy = {}\n\n".format(E_CC2_CORR))
 
         # Check convergence
         if (abs(E_CC2_CORR - E_old) < e_conv):
             E_CC2 = E_CC2_CORR + mol.E_SCF
             mol.E_CC2 = E_CC2
             mol.cc2_computed = True
-            print("CC2 converged in {} steps!\nCC2 Energy = {}".format(cc2_iter,E_CC2))
+            print('CC2 converged in {} steps!\nCC2 Energy = {}'.format(cc2_iter,E_CC2))
             break
         else:
             E_old = E_CC2_CORR
@@ -152,74 +174,88 @@ def do_cc2(mol,
 def build_tau(t1,t2,aprx=False):
     '''EQ 9'''
     tau = np.einsum('ia,jb->ijab',t1,t1)
-    tau -= np.einsum('ib,ja->ijab',t1,t1)
     if not aprx:
         tau += t2
     return tau
 
-def build_tildetau(t1,t2,aprx=False):
+def build_tildetau(t1,t2):
     '''EQ 10'''
-    tildetau = 0.5 * np.einsum('ia,jb->ijab',t1,t1)
-    tildetau -= 0.5 * np.einsum('ib,ja->ijab',t1,t1)
-    if not aprx:
-        tildetau += t2
+    tildetau = t2 + 0.5 * np.einsum('ia,jb->ijab',t1,t1)
     return tildetau
 
 # 2-INDEX INTERMEDIATES
 ## here aprx will drop everything but pure Fock terms
-def build_Fae(F,MO,ov,t1,t2,aprx=False):
+def build_Fvv(F,L,ov,t1,t2,tildetau,aprx=False):
     '''EQ 3'''
-    fae = F[ov[1],ov[1]].copy() # only need vir-vir block 
-    fae[np.diag_indices_from(fae)] = 0 # only need off-diag elements
+    fvv = F[ov[1],ov[1]].copy() # only need vir-vir block 
+    fvv[np.diag_indices_from(fvv)] = 0 # only need off-diag elements
     if not aprx:
-        fae -= 0.5 * np.einsum('me,ma->ae',F[ov[0],ov[1]],t1)
-        fae += np.einsum('mf,mafe->ae',t1,MO[ov[0],ov[1],ov[1],ov[1]])
-        tildetau = build_tildetau(t1,t2)
-        fae -= 0.5 * np.einsum('mnaf,mnef->ae',tildetau,MO[ov[0],ov[0],ov[1],ov[1]])
-    return fae
+        fvv -= 0.5 * np.einsum('me,ma->ae',F[ov[0],ov[1]],t1)
+        fvv += np.einsum('mf,mafe->ae',t1,L[ov[0],ov[1],ov[1],ov[1]])
+        fvv -=  np.einsum('mnfa,mnfe->ae',tildetau,L[ov[0],ov[0],ov[1],ov[1]])
+    return fvv
 
-def build_Fmi(F,MO,ov,t1,t2,aprx=False):
+def build_Foo(F,L,ov,t1,t2,tildetau,aprx=False):
     '''EQ 4'''
-    fmi = F[ov[0],ov[0]].copy() # occ-occ block
-    fmi[np.diag_indices_from(fmi)] = 0 # only need off-diag elements
-    fmi += 0.5 * np.einsum('ie,me->mi',t1,F[ov[0],ov[1]])
+    foo = F[ov[0],ov[0]].copy() # occ-occ block
+    foo[np.diag_indices_from(foo)] = 0 # only need off-diag elements
+    foo += 0.5 * np.einsum('me,ie->mi',F[ov[0],ov[1]],t1)
     if not aprx:
-        fmi += np.einsum('ne,mnie->mi',t1,MO[ov[0],ov[0],ov[0],ov[1]])
-        tildetau = build_tildetau(t1,t2,aprx)
-        fmi += 0.5 * np.einsum('inef,mnef->mi',tildetau,MO[ov[0],ov[0],ov[1],ov[1]])
-    return fmi
+        foo += np.einsum('ne,mnie->mi',t1,L[ov[0],ov[0],ov[0],ov[1]])
+        foo += np.einsum('infe,mnfe->mi',tildetau,L[ov[0],ov[0],ov[1],ov[1]])
+    return foo
 
-def build_Fme(F,MO,ov,t1,aprx=False):
+def build_Fov(F,L,ov,t1):
     '''EQ 5'''
-    fme = F[ov[0],ov[1]].copy() 
+    fov = F[ov[0],ov[1]].copy() + np.einsum('nf,mnef->me',t1,L[ov[0],ov[0],ov[1],ov[1]])
+    return fov
+
+def build_F(F,L,ov,t1,t2,tildetau,aprx=False):
+    fvv = build_Fvv(F,L,ov,t1,t2,tildetau,aprx)
+    foo = build_Foo(F,L,ov,t1,t2,tildetau,aprx)
     if not aprx:
-        fme += np.einsum('nf,mnef->me',t1,MO[ov[0],ov[0],ov[1],ov[1]])
-    return fme
+        fov = build_Fov(F,L,ov,t1)
+        return fvv, foo, fov
+    else:
+        return fvv, foo
 
 # 4-INDEX INTERMEDIATES
-def build_Wmnij(MO,ov,t1,t2,aprx=False):
+def build_Woooo(MO,ov,t1,t2,tau):
     '''EQ 6'''
-    wmnij = MO[ov[0],ov[0],ov[0],ov[0]].copy()
-    wmnij += np.einsum('je,mnie->mnij',t1,MO[ov[0],ov[0],ov[0],ov[1]])
-    wmnij -= np.einsum('ie,mnje->mnij',t1,MO[ov[0],ov[0],ov[0],ov[1]])
-    tau = build_tau(t1,t2,aprx)
-    wmnij += 0.25 * np.einsum('ijef,mnef->mnij',tau,MO[ov[0],ov[0],ov[1],ov[1]])
-    return wmnij
+    woooo = MO[ov[0],ov[0],ov[0],ov[0]].copy()
+    woooo += np.einsum('je,mnie->mnij',t1,MO[ov[0],ov[0],ov[0],ov[1]])
+    woooo += np.einsum('ie,mnej->mnij',t1,MO[ov[0],ov[0],ov[1],ov[0]])
+    woooo += np.einsum('ijef,mnef->mnij',tau,MO[ov[0],ov[0],ov[1],ov[1]])
+    return woooo
 
-def build_Wabef(MO,ov,t1,t2,aprx=False):
-    '''EQ 7'''
-    wabef = MO[ov[1],ov[1],ov[1],ov[1]].copy()
-    wabef -= np.einsum('mb,amef->abef',t1,MO[ov[1],ov[0],ov[1],ov[1]])
-    wabef += np.einsum('ma,bmef->abef',t1,MO[ov[1],ov[0],ov[1],ov[1]])
-    tau = build_tau(t1,t2,aprx)
-    wabef += 0.25 * np.einsum('mnab,mnef->abef',tau,MO[ov[0],ov[0],ov[1],ov[1]])
-    return wabef
+def build_Wovov(MO,ov,t1,t2,tau,aprx=False):
+    '''EQ 7- now Wovov and Z'''
+    wovov = -1*MO[ov[0],ov[1],ov[0],ov[1]].copy()
+    if not aprx:
+        wovov -= np.einsum('jf,mbfe->mbje',t1,MO[ov[0],ov[1],ov[1],ov[1]])
+        wovov += np.einsum('nb,mnje->mbje',t1,MO[ov[0],ov[0],ov[0],ov[1]])
+        tmp = np.einsum('jf,nb->jnfb',t1,t1)
+        wovov += np.einsum('mnfe,jnfb->mbje',MO[ov[0],ov[0],ov[1],ov[1]],(0.5*t2+tmp))
+    return wovov
 
-def build_Wmbej(MO,ov,t1,t2):
-    '''EQ 8'''
-    wmbej = MO[ov[0],ov[1],ov[1],ov[0]].copy()
-    wmbej += np.einsum('jf,mbef->mbej',t1,MO[ov[0],ov[1],ov[1],ov[1]])
-    wmbej -= np.einsum('nb,mnej->mbej',t1,MO[ov[0],ov[0],ov[1],ov[0]])
-    tmp = np.einsum('jf,nb->jnfb',t1,t1)
-    wmbej -= np.einsum('jnfb,mnef->mbej',0.5*t2+tmp,MO[ov[0],ov[0],ov[1],ov[1]])
-    return wmbej
+#def build_Wovvo(MO,L,ov,t1,t2):
+#    '''EQ 8'''
+#    wovvo = MO[ov[0],ov[1],ov[1],ov[0]].copy()
+#    wovvo += np.einsum('jf,mbef->mbej',t1,MO[ov[0],ov[1],ov[1],ov[1]])
+#    wovvo -= np.einsum('nb,mnej->mbej',t1,MO[ov[0],ov[0],ov[1],ov[0]])
+#    tmp = np.einsum('jf,nb->jnfb',t1,t1)
+#    wovvo -= np.einsum('mnef,jnfb->mbej',MO[ov[0],ov[0],ov[1],ov[1]],(0.5*t2+tmp))
+#    wovvo += 0.5*np.einsum('mnef,njfb->mbej',L[ov[0],ov[0],ov[1],ov[1]],t2)
+#    return wovvo
+
+def build_W(MO,L,ov,t1,t2,tau,aprx=False):
+    woooo = build_Woooo(MO,ov,t1,t2,tau)
+    wovov = build_Wovov(MO,ov,t1,t2,tau,aprx)
+#    wovvo = build_Wovvo(MO,L,ov,t1,t2)
+#    return woooo,wovov,wovvo
+    return woooo,wovov
+
+def build_Z(MO,ov,tau):
+    '''Necessary to avoid explicit building of Wvvvv'''
+    z_ovoo = np.einsum('mbef,ijef->mbij',MO[ov[0],ov[1],ov[1],ov[1]].copy(),tau)
+    return z_ovoo
