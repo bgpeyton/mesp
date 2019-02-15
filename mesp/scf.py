@@ -78,4 +78,6 @@ def do_scf(mol,
         eps, mol.C = diag(A,F)  
         Cdocc = mol.C[:, :ndocc] 
         mol.D = np.einsum('ik,jk->ij',Cdocc,Cdocc) # New density
-
+    
+    if mol.scf_computed == False:
+        print("SCF did not converge.")
