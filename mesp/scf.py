@@ -14,7 +14,10 @@ def diag(A,F):
 def do_scf(mol,
         e_conv = 1e-12,
         d_conv = 1e-12,
-        max_iter = 50):
+        max_iter = 50,
+        diis_start = 3,
+        diis_max = 6,
+        diis_step = 0):
     '''
     SCF function
     
@@ -24,6 +27,9 @@ def do_scf(mol,
     e_conv: float
     d_conv: float
     max_iter: int, maximum iterations for SCF
+    diis_start: int, first iteration where DIIS is performed
+    diis_max: int, max number of Fock and gradient matrices held for DIIS extrapolation
+    diis_step: int, allow `diis_step` full normal scf cycles between DIIS extrapolation
     '''
     
     ### SETUP ###
@@ -49,6 +55,10 @@ def do_scf(mol,
     Cdocc = mol.C[:, :ndocc] # Coefficients of occupied orbitals only: only keep ndocc columns
     mol.D = np.einsum('ik,jk->ij',Cdocc,Cdocc) # Initial density
 
+    F_list = [] # List of F for DIIS
+    r_list = [] # List of residuals (gradients) for DIIS
+    diis_count = 0 # Keep track of steps between DIIS
+
     ### START SCF ###
     E_old = 0
     D_old = np.zeros_like(mol.D)
@@ -58,11 +68,17 @@ def do_scf(mol,
 
         F = mol.Hc + 2*mol.J - mol.K # Compute Fock matrix
 
-        E_SCF = np.einsum('ij,ij->',mol.D,mol.Hc+F) + E_nuc# Compute SCF energy
+        E_SCF = np.einsum('ij,ij->',mol.D,mol.Hc+F) + E_nuc # Compute SCF energy
 
         grad = np.einsum('ij,jk,kl->il',F,mol.D,S) - np.einsum('ij,jk,kl->il',S,mol.D,F)
-        grad = A.T @ grad @ A
-        rms = np.mean(grad**2)**0.5
+        grad = A.T @ grad @ A # Compute orthogonormalized orbital gradient
+        rms = np.mean(grad**2)**0.5 # Compute RMSD of the orbital gradient
+        
+        F_list.append(F)
+        r_list.append(grad)
+        if len(F_list) > diis_max:
+            del F_list[0]
+            del r_list[0]
 
         if ((abs(E_SCF - E_old) < e_conv) and (rms < d_conv)):
             print("SCF converged in {} steps!\nSCF Energy = {}".format(scf_iter,E_SCF))
@@ -70,9 +86,32 @@ def do_scf(mol,
             mol.E_SCF = E_SCF
             mol.eps = eps
             break
+    
+        diis_count += 1
+        if scf_iter >= diis_start and diis_count > diis_step:
+            B = np.empty((len(F_list)+1,len(F_list)+1)) # Build B matrix to solve Pulay Eqn
+            B[-1,:]  = -1 #   [<r|r> ..  -1] [c1]   [0 ]
+            B[:,-1]  = -1 #   [ ..   ..  ..] [..] = [..]
+            B[-1,-1] = 0  #   [ -1   ..   0] [L ]   [-1]
+            for i in range(0,len(F_list)): # Compute overlaps <r_i|r_j>
+                for j in range(0,len(F_list)):
+                    if j > i: continue
+                    B[i,j] = np.einsum('ij,ij->',r_list[i],r_list[j])
+                    B[j,i] = B[i,j] # B is symmetric!
+            B[:-1,:-1] /= np.abs(B[:-1,:-1]).max() # Normalize
 
-        E_old = E_SCF
+            rhs = np.zeros(B.shape[0])
+            rhs[-1] = -1
 
+            c = np.linalg.solve(B,rhs) # Solve Pulay eq for coefficient vector
+
+            F = np.zeros_like(F) # Solve DIIS Fock
+            for i in range(c.shape[0] - 1):
+                F += c[i] * F_list[i] # Linear combination of F_list
+
+            diis_count = 0 # Reset DIIS counter
+
+        E_old = E_SCF # Get ready for the next SCF cycle
         D_old = mol.D
 
         eps, mol.C = diag(A,F)  
