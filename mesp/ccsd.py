@@ -4,7 +4,10 @@ import mesp
 
 def do_ccsd(mol,
             e_conv = 1e-12,
-            max_iter = 50):
+            max_iter = 50,
+            diis_start = 1,
+            diis_max = 8,
+            diis_step = 0):
     '''
     CCSD function
     
@@ -13,6 +16,9 @@ def do_ccsd(mol,
     mol: MESP Molecule class
     e_conv: optional float (default = 1e-12), convergence criteria for energy
     max_iter: optional int (default = 50), maximum iterations for CCSD
+    diis_start: optional int, first iteration where DIIS is performed
+    diis_max: optional int, max number of Fock and gradient matrices held for DIIS extrapolation
+    diis_step: optional int, allow `diis_step` full normal scf cycles between DIIS extrapolation
 
     Notes
     ----------
@@ -72,6 +78,12 @@ def do_ccsd(mol,
 
     # Start CCSD iterations
     E_old = 0.0
+    t1_list = [t1.copy()]
+    t2_list = [t2.copy()]
+    t1_old = t1.copy()
+    t2_old = t2.copy()
+    r_list = [] # Residual list (DIIS error vectors)
+    diis_count = 0
     for ccsd_iter in range(1,max_iter):
 #        print("Iteration {} . . .".format(ccsd_iter))
 
@@ -159,9 +171,49 @@ def do_ccsd(mol,
             break
         else:
             E_old = E_CCSD_CORR
+            t1_list.append(t1.copy())
+            t2_list.append(t2.copy())
+            r_t1 = (t1 - t1_old).ravel()
+            r_t2 = (t2 - t2_old).ravel()
+            r_list.append(np.concatenate((r_t1,r_t2)))
+            if len(t1_list) > diis_max:
+                del t1_list[0]
+                del t2_list[0]
+                del r_list[0]
+            
+            diis_count += 1
+            if ccsd_iter >= diis_start and diis_count > diis_step: # See scf.py for DIIS notes
+                B = np.empty((len(r_list)+1,len(r_list)+1))
+                B[-1,:]  = -1
+                B[:,-1]  = -1
+                B[-1,-1] = 0
+                for i in range(0,len(r_list)):
+                    for j in range(0,len(r_list)):
+                        if j > i: continue
+                        B[i,j] = np.einsum('i,i->',r_list[i],r_list[j])
+                        B[j,i] = B[i,j]
+                B[:-1,:-1] /= np.abs(B[:-1,:-1]).max() 
+
+                rhs = np.zeros(B.shape[0])
+                rhs[-1] = -1
+
+                c = np.linalg.solve(B,rhs)
+
+                t1 = np.zeros_like(t1)
+                t2 = np.zeros_like(t2)
+                for i in range(len(r_list)):
+                    t1 += c[i] * t1_list[i+1]
+                    t2 += c[i] * t2_list[i+1]
+
+                diis_count = 0
+
+            t1_old = t1.copy() # Keep t1, whether it was DIIS-extrapolated or not
+            t2_old = t2.copy()
+
     if mol.ccsd_computed == False:
         print("CCSD did not converge after {} steps.".format(max_iter))
         print("Current CCSD Correlation Energy = {}".format(E_CCSD_CORR))
+        print("Current CCSD Energy = {}".format(E_CCSD_CORR + mol.E_SCF))
 
 # TAU BUILD FNS
 def build_tau(t1,t2):

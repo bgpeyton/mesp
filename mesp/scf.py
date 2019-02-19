@@ -92,10 +92,13 @@ def do_scf(mol,
             B = np.empty((len(F_list)+1,len(F_list)+1)) # Build B matrix to solve Pulay Eqn
             B[-1,:]  = -1 #   [<r|r> ..  -1] [c1]   [0 ]
             B[:,-1]  = -1 #   [ ..   ..  ..] [..] = [..]
-            B[-1,-1] = -1 #   [ -1   ..   0] [L ]   [-1]
+            B[-1,-1] = 0  #   [ -1   ..   0] [L ]   [-1]
             for i in range(0,len(F_list)): # Compute overlaps <r_i|r_j>
                 for j in range(0,len(F_list)):
+                    if j > i: continue
                     B[i,j] = np.einsum('ij,ij->',r_list[i],r_list[j])
+                    B[j,i] = B[i,j] # B is symmetric!
+            B[:-1,:-1] /= np.abs(B[:-1,:-1]).max() # Normalize
 
             rhs = np.zeros(B.shape[0])
             rhs[-1] = -1
