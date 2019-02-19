@@ -62,7 +62,7 @@ def do_scf(mol,
     ### START SCF ###
     E_old = 0
     D_old = np.zeros_like(mol.D)
-    for scf_iter in range(1,max_iter):
+    for scf_iter in range(1,max_iter+1):
         mol.J = np.einsum('rs,pqrs->pq',mol.D,ERI) # Compute Coulomb term
         mol.K = np.einsum('rs,prqs->pq',mol.D,ERI) # Compute Exhange term
 
