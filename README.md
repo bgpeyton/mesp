@@ -17,9 +17,9 @@ py.test
 * * RHF (with DIIS)
 * MP2
 * * Spin-orbital
-* CCSD (spin-adapted and spin-orbital)
+* CCSD
 * * Spin-orbital
 * * Spin-adapted (with DIIS)
-* CC2  (spin-adapted and spin-orbital)
+* CC2
 * * Spin-orbital
 * * Spin-adapted (with DIIS)
