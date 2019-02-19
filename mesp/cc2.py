@@ -215,6 +215,7 @@ def do_cc2(mol,
     if mol.cc2_computed == False:
         print("CC2 did not converge after {} steps.".format(max_iter))
         print("Current CC2 Correlation Energy = {}".format(E_CC2_CORR))
+        print("Current CC2 Energy = {}".format(E_CC2_CORR + mol.E_SCF))
 
 # TAU BUILD FNS
 ## here aprx will drop t2 terms
