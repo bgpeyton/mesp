@@ -83,9 +83,4 @@ mollib["C2H4"] = ethylene_molecule
 #mollib["C6H6"] = benzene_molecule 
 
 ### NOTES ###
-# CO
-# # SCF/DZ could not converge to 1e-8, stuck in well (implement damping)
-# C2H2
-# # SCF/STO-3G could not converge to 1e-8 rms, 100 iterations
-# C6H6
-# # SCF could not converge to 1e-6, 100 iterations
+# CO, C2H2, and C6H6 commented out due to long test times

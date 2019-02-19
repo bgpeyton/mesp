@@ -80,9 +80,6 @@ def do_scf(mol,
             del F_list[0]
             del r_list[0]
 
-        if debug:
-            print("Iter {}: E = {}, rms = {}".format(scf_iter,E_SCF,rms))
-
         if ((abs(E_SCF - E_old) < e_conv) and (rms < d_conv)):
             print("SCF converged in {} steps!\nSCF Energy = {}".format(scf_iter,E_SCF))
             mol.scf_computed = True
