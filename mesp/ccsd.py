@@ -18,7 +18,7 @@ def do_ccsd(mol,
     max_iter: optional int (default = 50), maximum iterations for CCSD
     diis_start: optional int, first iteration where DIIS is performed
     diis_max: optional int, max number of Fock and gradient matrices held for DIIS extrapolation
-    diis_step: optional int, allow `diis_step` full normal scf cycles between DIIS extrapolation
+    diis_step: optional int, allow `diis_step` relaxation cycles between DIIS extrapolation
 
     Notes
     ----------
