@@ -14,6 +14,12 @@ py.test
 
 ### Implemented methods:
 * SCF
+* * RHF (with DIIS)
 * MP2
+* * Spin-orbital
 * CCSD (spin-adapted and spin-orbital)
+* * Spin-orbital
+* * Spin-adapted (with DIIS)
 * CC2  (spin-adapted and spin-orbital)
+* * Spin-orbital
+* * Spin-adapted (with DIIS)
