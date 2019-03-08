@@ -7,7 +7,8 @@ def do_cc2(mol,
            max_iter = 50,
            diis_start = 1,
            diis_max = 8,
-           diis_step = 0):
+           diis_step = 0,
+           save_t = False):
     '''
     CC2 function
     
@@ -19,6 +20,7 @@ def do_cc2(mol,
     diis_start: optional int, first iteration where DIIS is performed
     diis_max: optional int, max number of Fock and gradient matrices held for DIIS extrapolation
     diis_step: optional int, allow `diis_step` relaxation cycles between DIIS extrapolation
+    save_t: optional bool (default = False), save final t-amplitudes
 
     Notes
     ----------
@@ -171,6 +173,9 @@ def do_cc2(mol,
             mol.E_CC2 = E_CC2
             mol.cc2_computed = True
             print('CC2 converged in {} steps!\nCC2 Energy = {}'.format(cc2_iter,E_CC2))
+            if save_t:
+                mol.t1 = t1
+                mol.t2 = t2
             break
         else:
             E_old = E_CC2_CORR

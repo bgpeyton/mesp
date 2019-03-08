@@ -4,7 +4,8 @@ import mesp
 
 def do_so_cc2(mol,
             e_conv = 1e-12,
-            max_iter = 50):
+            max_iter = 50,
+            save_t = False):
     '''
     CC2 function
     
@@ -12,6 +13,7 @@ def do_so_cc2(mol,
     ----------
     mol: MESP Molecule class
     max_iter: int, maximum iterations for CC2
+    save_t: optional bool (default = False), save final t-amplitudes
     '''
     
     ### SETUP ###
@@ -140,6 +142,9 @@ def do_so_cc2(mol,
             mol.E_CC2 = E_CC2
             mol.cc2_computed = True
             print("CC2 converged in {} steps!\nCC2 Energy = {}".format(cc2_iter,E_CC2))
+            if save_t:
+                mol.t1 = t1
+                mol.t2 = t2
             break
         else:
             E_old = E_CC2_CORR
