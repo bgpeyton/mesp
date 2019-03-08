@@ -7,7 +7,8 @@ def do_ccsd(mol,
             max_iter = 50,
             diis_start = 1,
             diis_max = 8,
-            diis_step = 0):
+            diis_step = 0,
+            save_t = False):
     '''
     CCSD function
     
@@ -19,6 +20,7 @@ def do_ccsd(mol,
     diis_start: optional int, first iteration where DIIS is performed
     diis_max: optional int, max number of Fock and gradient matrices held for DIIS extrapolation
     diis_step: optional int, allow `diis_step` relaxation cycles between DIIS extrapolation
+    save_t: optional bool (default = False), save final t-amplitudes
 
     Notes
     ----------
@@ -168,6 +170,9 @@ def do_ccsd(mol,
             mol.E_CCSD = E_CCSD
             mol.ccsd_computed = True
             print('CCSD converged in {} steps!\nCCSD Energy = {}'.format(ccsd_iter,E_CCSD))
+            if save_t:
+                mol.t1 = t1
+                mol.t2 = t2
             break
         else:
             E_old = E_CCSD_CORR

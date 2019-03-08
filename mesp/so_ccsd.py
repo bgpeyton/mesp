@@ -4,7 +4,8 @@ import mesp
 
 def do_so_ccsd(mol,
             e_conv = 1e-12,
-            max_iter = 50):
+            max_iter = 50,
+            save_t = False):
     '''
     Spin Orbital CCSD function
     
@@ -12,6 +13,7 @@ def do_so_ccsd(mol,
     ----------
     mol: MESP Molecule class
     max_iter: int, maximum iterations for CCSD
+    save_t: optional bool (default = False), save final t-amplitudes
     '''
     
     ### SETUP ###
@@ -129,6 +131,9 @@ def do_so_ccsd(mol,
             mol.E_CCSD = E_CCSD
             mol.ccsd_computed = True
             print("CCSD converged in {} steps!\nCCSD Energy = {}".format(ccsd_iter,E_CCSD))
+            if save_t:
+                mol.t1 = t1
+                mol.t2 = t2
             break
         else:
             E_old = E_CCSD_CORR
