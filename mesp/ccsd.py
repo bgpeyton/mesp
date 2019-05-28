@@ -168,6 +168,7 @@ def do_ccsd(mol,
         if (abs(E_CCSD_CORR - E_old) < e_conv):
             E_CCSD = E_CCSD_CORR + mol.E_SCF
             mol.E_CCSD = E_CCSD
+            mol.E_CCSD_CORR = E_CCSD_CORR
             mol.ccsd_computed = True
             print('CCSD converged in {} steps!\nCCSD Energy = {}'.format(ccsd_iter,E_CCSD))
             if save_t:

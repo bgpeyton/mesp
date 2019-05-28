@@ -30,6 +30,7 @@ class Molecule:
         self.E_SCF = False
         self.E_MP2 = False
         self.E_CCSD = False
+        self.E_CCSD_CORR = False
         self.t1 = False
         self.t2 = False
         self.E_CC2 = False
